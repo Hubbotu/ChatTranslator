@@ -1,0 +1,16 @@
+## Interface: 110200
+## Title: Chat Translator
+## Title-ruRU: Переводчик чата
+## Notes: Real-time chat translator for Russian
+## Notes-ruRU: Переводчик чата на русский язык в реальном времени
+## Author: ZamestoTV
+## IconTexture: Interface\AddOns\ZamestoTV_ChatTranslator\Icons\goblin
+## Version: 1.5
+## SavedVariables: TranslationStore, ConfigOptions
+
+## Category-enUS: Addons ZamestoTV
+## Category-ruRU: Аддоны ZamestoTV
+
+UserTranslations.lua
+ChatTranslator.lua
+
