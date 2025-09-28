@@ -96,6 +96,8 @@ local function HandleMessage(frame, event, message, sender, ...)
         else
             shouldTranslate = ConfigOptions.globalTranslation
         end
+    elseif event == "CHAT_MSG_INSTANCE_CHAT" or event == "CHAT_MSG_INSTANCE_CHAT_LEADER" then
+        shouldTranslate = ConfigOptions.globalTranslation
     else
         shouldTranslate = ConfigOptions.globalTranslation
     end
@@ -134,6 +136,8 @@ messageProcessor:RegisterEvent("CHAT_MSG_RAID")
 messageProcessor:RegisterEvent("CHAT_MSG_RAID_LEADER")
 messageProcessor:RegisterEvent("CHAT_MSG_WHISPER")
 messageProcessor:RegisterEvent("CHAT_MSG_RAID_WARNING")
+messageProcessor:RegisterEvent("CHAT_MSG_INSTANCE_CHAT")
+messageProcessor:RegisterEvent("CHAT_MSG_INSTANCE_CHAT_LEADER")
 
 messageProcessor:SetScript("OnEvent", function(self, event, ...)
     local text, player = ...
