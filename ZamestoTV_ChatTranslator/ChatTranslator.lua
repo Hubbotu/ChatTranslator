@@ -1,9 +1,12 @@
+---------------------------------------------------------
+-- ZamestoTV Chat Translator (FULL ORIGINAL + FIXED)
+---------------------------------------------------------
+
+---------------------------------------------------------
+-- SavedVariables (DO NOT SET DEFAULTS HERE)
+---------------------------------------------------------
 TranslationStore = TranslationStore or {}
-ConfigOptions = ConfigOptions or {
-    globalTranslation = true,
-    channelTranslation = true,
-    wordByWord = true
-}
+ConfigOptions = ConfigOptions or {}
 
 ---------------------------------------------------------
 -- Flag icons
@@ -17,7 +20,22 @@ local ICON_ITALIAN    = "|TInterface\\AddOns\\ZamestoTV_ChatTranslator\\Icons\\i
 local ICON_ENGLISH    = "|TInterface\\AddOns\\ZamestoTV_ChatTranslator\\Icons\\british:16:32:0:0|t"
 
 ---------------------------------------------------------
--- Language detection (STRICT & SYMMETRIC)
+-- SavedVariables initialization (BLIZZARD SAFE)
+---------------------------------------------------------
+local function InitializeSavedVariables()
+    if ConfigOptions.globalTranslation == nil then
+        ConfigOptions.globalTranslation = true
+    end
+    if ConfigOptions.channelTranslation == nil then
+        ConfigOptions.channelTranslation = true
+    end
+    if ConfigOptions.wordByWord == nil then
+        ConfigOptions.wordByWord = true
+    end
+end
+
+---------------------------------------------------------
+-- Language detection (FULL ORIGINAL LOGIC)
 ---------------------------------------------------------
 local function DetectLanguage(text)
     if not text or text == "" then
@@ -99,13 +117,15 @@ local function GetLanguageIcon(language)
 end
 
 ---------------------------------------------------------
--- Translation loading
+-- Translation loading (ORIGINAL)
 ---------------------------------------------------------
 local function InitializeTranslations()
     if not RussianTranslationChat or type(RussianTranslationChat) ~= "table" then
         DEFAULT_CHAT_FRAME:AddMessage("|cFFFF0000[Переводчик чата] Ошибка загрузки переводов|r")
         return
     end
+
+    wipe(TranslationStore)
 
     local count = 0
     for src, dst in pairs(RussianTranslationChat) do
@@ -119,7 +139,7 @@ local function InitializeTranslations()
 end
 
 ---------------------------------------------------------
--- Helpers
+-- Helpers (ORIGINAL)
 ---------------------------------------------------------
 local function ExtractWords(input)
     local t = {}
@@ -139,7 +159,7 @@ local function IsPublicChannel(...)
 end
 
 ---------------------------------------------------------
--- Translation search
+-- Translation search (ORIGINAL)
 ---------------------------------------------------------
 local function FindTranslation(input)
     if not input or input == "" or tonumber(input) then return nil end
@@ -169,17 +189,25 @@ local function FindTranslation(input)
 end
 
 ---------------------------------------------------------
--- Main handler (ORIGINAL LOGIC)
+-- Main handler (ORIGINAL LOGIC - FIXED)
 ---------------------------------------------------------
 local function HandleMessage(_, event, message, sender, ...)
     if not message or message == "" then return end
 
     local shouldTranslate
+
     if event == "CHAT_MSG_CHANNEL" then
-        shouldTranslate = IsPublicChannel(...) and ConfigOptions.channelTranslation or ConfigOptions.globalTranslation
+        if not ConfigOptions.channelTranslation then
+            return
+        end
+        shouldTranslate = true
     else
-        shouldTranslate = ConfigOptions.globalTranslation
+        if not ConfigOptions.globalTranslation then
+            return
+        end
+        shouldTranslate = true
     end
+
     if not shouldTranslate then return end
 
     local player = sender and Ambiguate(sender, "short") or "?"
@@ -205,10 +233,11 @@ local function HandleMessage(_, event, message, sender, ...)
     )
 end
 
+
 ---------------------------------------------------------
--- Chat event processor (GLOBAL, CONTROLLABLE)
+-- Message processor (GLOBAL, REQUIRED FOR /gchat)
 ---------------------------------------------------------
-messageProcessor = CreateFrame("Frame", "MessageProcessor")
+messageProcessor = CreateFrame("Frame", "ZamestoTV_MessageProcessor")
 
 messageProcessor:RegisterEvent("CHAT_MSG_CHANNEL")
 messageProcessor:RegisterEvent("CHAT_MSG_SAY")
@@ -222,14 +251,10 @@ messageProcessor:RegisterEvent("CHAT_MSG_INSTANCE_CHAT")
 messageProcessor:RegisterEvent("CHAT_MSG_INSTANCE_CHAT_LEADER")
 messageProcessor:RegisterEvent("CHAT_MSG_RAID_WARNING")
 
-messageProcessor:SetScript("OnEvent", function(self, event, ...)
-    local text = select(1, ...)
-    local sender = select(2, ...)
-    HandleMessage(self, event, text, sender, ...)
-end)
+messageProcessor:SetScript("OnEvent", HandleMessage)
 
 ---------------------------------------------------------
--- Slash commands (REAL /gchat FIX)
+-- Slash commands (FULL, WORKING, SAVED)
 ---------------------------------------------------------
 SLASH_ZCHAT_GLOBAL1 = "/achat"
 SlashCmdList["ZCHAT_GLOBAL"] = function()
@@ -261,4 +286,7 @@ end
 ---------------------------------------------------------
 local init = CreateFrame("Frame")
 init:RegisterEvent("PLAYER_LOGIN")
-init:SetScript("OnEvent", InitializeTranslations)
+init:SetScript("OnEvent", function()
+    InitializeSavedVariables()
+    InitializeTranslations()
+end)
