@@ -6,7 +6,7 @@ ConfigOptions = ConfigOptions or {
 }
 
 ---------------------------------------------------------
--- Flag icons
+-- Flag icons (16x32)
 ---------------------------------------------------------
 local ICON_RUSSIAN    = "|TInterface\\AddOns\\ZamestoTV_ChatTranslator\\Icons\\russian:16:32:0:0|t"
 local ICON_FRENCH     = "|TInterface\\AddOns\\ZamestoTV_ChatTranslator\\Icons\\french:16:32:0:0|t"
@@ -17,7 +17,7 @@ local ICON_ITALIAN    = "|TInterface\\AddOns\\ZamestoTV_ChatTranslator\\Icons\\i
 local ICON_ENGLISH    = "|TInterface\\AddOns\\ZamestoTV_ChatTranslator\\Icons\\british:16:32:0:0|t"
 
 ---------------------------------------------------------
--- Language detection (STRICT & SYMMETRIC)
+-- STRICT language detection (NON-DESTRUCTIVE)
 ---------------------------------------------------------
 local function DetectLanguage(text)
     if not text or text == "" then
@@ -27,41 +27,27 @@ local function DetectLanguage(text)
     local lower = text:lower()
 
     -----------------------------------------------------
-    -- Keyword tables
+    -- Single-word priority
     -----------------------------------------------------
-    local WORDS = {
+    local singleWords = {
         german = {
-            "aber","alle","als","auf","aus","bei","bin","bis","das","dass","dem","den",
-            "der","die","doch","ein","eine","für","geht","gibt","haben","hat","ich",
-            "ist","ja","kann","kein","mit","nicht","nur","oder","sich","sie","sind",
-            "und","von","was","wenn","wer","wie","wir","zu","zum","über"
+            "und","das","ich","nicht","zu","mit","auf","für","ist","aber","bin","von","wir","sie","er"
         },
         french = {
-            "alors","avec","avoir","bonjour","bonsoir","dans","des","donc","elle",
-            "est","être","faire","ici","mais","merci","nous","pas","pour","quoi",
-            "sans","sur","tout","très","vous","ça"
+            "oui","non","merci","bonjour","salut","avec","pour","est","pas","vous","nous","ça"
         },
         spanish = {
-            "hola","adios","ayer","bien","como","con","del","donde","entonces",
-            "estoy","gracias","hacer","mañana","para","pero","porque","que",
-            "quien","siempre","sobre","todo","una","usted","muy"
+            "hola","gracias","mañana","pero","porque","usted","bien","muy","como","donde"
         },
         portuguese = {
-            "agora","aqui","bem","bom","com","como","então","está","fazer",
-            "hoje","mas","não","obrigado","para","porque","quando","sem",
-            "também","você","muito"
+            "não","sim","obrigado","você","muito","bem","agora","porque","então","como"
         },
         italian = {
-            "allora","anche","bene","buono","ciao","come","con","fare","grazie",
-            "molto","non","oggi","perché","quando","qui","senza","sono",
-            "tutto","una","voi"
+            "ciao","grazie","bene","molto","oggi","perché","come","quando","senza","tutto"
         }
     }
 
-    -----------------------------------------------------
-    -- 1) STRICT single-word match
-    -----------------------------------------------------
-    for lang, list in pairs(WORDS) do
+    for lang, list in pairs(singleWords) do
         for _, w in ipairs(list) do
             if lower == w then
                 return lang
@@ -70,48 +56,51 @@ local function DetectLanguage(text)
     end
 
     -----------------------------------------------------
-    -- 2) UNIQUE LETTERS (ABSOLUTE)
+    -- Unique characters (absolute)
     -----------------------------------------------------
     if lower:find("[äöüß]") then return "german" end
     if lower:find("ñ") then return "spanish" end
     if lower:find("[ãõ]") then return "portuguese" end
-    if lower:find("[œæç]") then return "french" end
+    if lower:find("[œæ]") or (lower:find("ç") and lower:find("[àèéêëîïôùûü]")) then
+        return "french"
+    end
     if lower:find("[àèìòù]") then return "italian" end
     if lower:find("[А-Яа-яЁё]") then return "russian" end
 
     -----------------------------------------------------
-    -- 3) SCORE detection
+    -- Keyword scoring (safe fallback)
     -----------------------------------------------------
-    for lang, list in pairs(WORDS) do
-        local score = 0
-        for _, w in ipairs(list) do
+    local function score(words)
+        local s = 0
+        for _, w in ipairs(words) do
             if lower:find("%f[%a]" .. w .. "%f[%A]") then
-                score = score + 1
+                s = s + 1
             end
         end
-        if score >= 2 then
-            return lang
-        end
+        return s
     end
+
+    if score(singleWords.german) >= 2 then return "german" end
+    if score(singleWords.french) >= 2 then return "french" end
+    if score(singleWords.spanish) >= 2 then return "spanish" end
+    if score(singleWords.portuguese) >= 2 then return "portuguese" end
+    if score(singleWords.italian) >= 2 then return "italian" end
 
     return "english"
 end
 
----------------------------------------------------------
--- Language icon
----------------------------------------------------------
 local function GetLanguageIcon(language)
-    if language == "russian"    then return ICON_RUSSIAN end
-    if language == "german"     then return ICON_GERMAN end
-    if language == "french"     then return ICON_FRENCH end
-    if language == "spanish"    then return ICON_SPANISH end
-    if language == "portuguese" then return ICON_PORTUGUESE end
-    if language == "italian"    then return ICON_ITALIAN end
-    return ICON_ENGLISH
+    if language == "french"     then return ICON_FRENCH
+    elseif language == "german" then return ICON_GERMAN
+    elseif language == "portuguese" then return ICON_PORTUGUESE
+    elseif language == "spanish" then return ICON_SPANISH
+    elseif language == "italian" then return ICON_ITALIAN
+    elseif language == "russian" then return ICON_RUSSIAN
+    else return ICON_ENGLISH end
 end
 
 ---------------------------------------------------------
--- Translation loading
+-- Load translations
 ---------------------------------------------------------
 local function InitializeTranslations()
     if not RussianTranslationChat or type(RussianTranslationChat) ~= "table" then
@@ -120,9 +109,9 @@ local function InitializeTranslations()
     end
 
     local count = 0
-    for src, dst in pairs(RussianTranslationChat) do
-        if type(src) == "string" and type(dst) == "string" then
-            TranslationStore[src:lower()] = dst
+    for k, v in pairs(RussianTranslationChat) do
+        if type(k) == "string" and type(v) == "string" then
+            TranslationStore[k:lower()] = v
             count = count + 1
         end
     end
@@ -131,7 +120,7 @@ local function InitializeTranslations()
 end
 
 ---------------------------------------------------------
--- Helpers
+-- Utilities
 ---------------------------------------------------------
 local function ExtractWords(input)
     local t = {}
@@ -147,11 +136,12 @@ end
 
 local function IsPublicChannel(...)
     local channelInfo = select(4, ...)
-    return channelInfo and channelInfo:match("^%d+%.%s") ~= nil
+    if not channelInfo then return false end
+    return channelInfo:match("^%d+%.%s") ~= nil
 end
 
 ---------------------------------------------------------
--- Translation search
+-- Translation lookup
 ---------------------------------------------------------
 local function FindTranslation(input)
     if not input or input == "" or tonumber(input) then return nil end
@@ -181,36 +171,34 @@ local function FindTranslation(input)
 end
 
 ---------------------------------------------------------
--- Main handler (FULL CHAT SUPPORT)
+-- Message handler (ORIGINAL LOGIC PRESERVED)
 ---------------------------------------------------------
-local function HandleMessage(_, event, message, sender, ...)
-    if not message or message == "" then return end
+local function HandleMessage(frame, event, message, sender, ...)
+    if not message or message == "" or tonumber(message) then return end
 
-    local shouldTranslate
+    local shouldTranslate = false
+
     if event == "CHAT_MSG_CHANNEL" then
-        shouldTranslate = IsPublicChannel(...) and ConfigOptions.channelTranslation or ConfigOptions.globalTranslation
+        if IsPublicChannel(...) then
+            shouldTranslate = ConfigOptions.channelTranslation
+        else
+            shouldTranslate = ConfigOptions.globalTranslation
+        end
     else
         shouldTranslate = ConfigOptions.globalTranslation
     end
+
     if not shouldTranslate then return end
 
     local player = sender and Ambiguate(sender, "short") or "?"
     local translation = FindTranslation(message)
+
     local lang = DetectLanguage(message)
     local icon = GetLanguageIcon(lang)
 
-    local short =
-        lang == "english" and "ENG" or
-        lang == "german" and "DEU" or
-        lang == "french" and "FRA" or
-        lang == "spanish" and "ESP" or
-        lang == "portuguese" and "POR" or
-        lang == "italian" and "ITA" or
-        lang == "russian" and "РУС" or "???"
-
     local label = translation
         and ICON_RUSSIAN .. " |cFF00FF00[Перевод]|r"
-        or icon .. " |cFFFFD000[" .. short .. "]|r"
+        or icon .. " |cFFFFD000[" .. string.upper(lang) .. "]|r"
 
     DEFAULT_CHAT_FRAME:AddMessage(
         string.format("%s |cFFFFFF00%s|r: %s", label, player, translation or message)
@@ -218,47 +206,67 @@ local function HandleMessage(_, event, message, sender, ...)
 end
 
 ---------------------------------------------------------
--- Events (ALL SUPPORTED)
+-- Chat event processor (GLOBAL FRAME)
 ---------------------------------------------------------
-local f = CreateFrame("Frame")
-f:RegisterEvent("CHAT_MSG_CHANNEL")
-f:RegisterEvent("CHAT_MSG_SAY")
-f:RegisterEvent("CHAT_MSG_YELL")
-f:RegisterEvent("CHAT_MSG_PARTY")
-f:RegisterEvent("CHAT_MSG_PARTY_LEADER")
-f:RegisterEvent("CHAT_MSG_RAID")
-f:RegisterEvent("CHAT_MSG_RAID_LEADER")
-f:RegisterEvent("CHAT_MSG_WHISPER")
-f:RegisterEvent("CHAT_MSG_INSTANCE_CHAT")
-f:RegisterEvent("CHAT_MSG_INSTANCE_CHAT_LEADER")
-f:RegisterEvent("CHAT_MSG_RAID_WARNING")
 
-f:SetScript("OnEvent", HandleMessage)
+messageProcessor = CreateFrame("Frame", "MessageProcessor")
+
+messageProcessor:RegisterEvent("CHAT_MSG_CHANNEL")
+messageProcessor:RegisterEvent("CHAT_MSG_SAY")
+messageProcessor:RegisterEvent("CHAT_MSG_YELL")
+messageProcessor:RegisterEvent("CHAT_MSG_PARTY")
+messageProcessor:RegisterEvent("CHAT_MSG_PARTY_LEADER")
+messageProcessor:RegisterEvent("CHAT_MSG_RAID")
+messageProcessor:RegisterEvent("CHAT_MSG_RAID_LEADER")
+messageProcessor:RegisterEvent("CHAT_MSG_WHISPER")
+messageProcessor:RegisterEvent("CHAT_MSG_RAID_WARNING")
+messageProcessor:RegisterEvent("CHAT_MSG_INSTANCE_CHAT")
+messageProcessor:RegisterEvent("CHAT_MSG_INSTANCE_CHAT_LEADER")
+
+messageProcessor:SetScript("OnEvent", function(self, event, ...)
+    local text = select(1, ...)
+    local sender = select(2, ...)
+    HandleMessage(self, event, text, sender, ...)
+end)
 
 ---------------------------------------------------------
--- Slash commands (RESTORED)
+-- Slash commands (REAL WORKING VERSION)
 ---------------------------------------------------------
+
 SLASH_ZCHAT_GLOBAL1 = "/achat"
 SlashCmdList["ZCHAT_GLOBAL"] = function()
     ConfigOptions.globalTranslation = not ConfigOptions.globalTranslation
+
     DEFAULT_CHAT_FRAME:AddMessage(
         "|cFF00FF00[Переводчик чата]|r Личные чаты " ..
         (ConfigOptions.globalTranslation and "включены" or "выключены")
     )
 end
 
+
 SLASH_ZCHAT_PUBLIC1 = "/gchat"
 SlashCmdList["ZCHAT_PUBLIC"] = function()
     ConfigOptions.channelTranslation = not ConfigOptions.channelTranslation
+
+    if ConfigOptions.channelTranslation then
+        messageProcessor:RegisterEvent("CHAT_MSG_CHANNEL")
+    else
+        messageProcessor:UnregisterEvent("CHAT_MSG_CHANNEL")
+    end
+
     DEFAULT_CHAT_FRAME:AddMessage(
         "|cFF00FF00[Переводчик чата]|r Публичные каналы " ..
         (ConfigOptions.channelTranslation and "включены" or "выключены")
     )
 end
 
+
 ---------------------------------------------------------
 -- Init
 ---------------------------------------------------------
 local init = CreateFrame("Frame")
 init:RegisterEvent("PLAYER_LOGIN")
-init:SetScript("OnEvent", InitializeTranslations)
+init:SetScript("OnEvent", function()
+    InitializeTranslations()
+    DEFAULT_CHAT_FRAME:AddMessage("|cFF00FF00[Переводчик чата] Аддон успешно загружен.|r")
+end)

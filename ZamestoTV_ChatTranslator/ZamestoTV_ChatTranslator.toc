@@ -5,7 +5,7 @@
 ## Notes-ruRU: Переводчик чата на русский язык в реальном времени
 ## Author: ZamestoTV
 ## IconTexture: Interface\AddOns\ZamestoTV_ChatTranslator\Icons\goblin
-## Version: 1.8
+## Version: 1.9
 ## SavedVariables: TranslationStore, ConfigOptions
 
 ## Category-enUS: Addons ZamestoTV
