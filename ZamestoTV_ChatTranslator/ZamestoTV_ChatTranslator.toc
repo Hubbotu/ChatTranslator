@@ -6,7 +6,7 @@
 ## Author: ZamestoTV
 ## IconTexture: Interface\AddOns\ZamestoTV_ChatTranslator\Icons\goblin
 ## Version: 1.9
-## SavedVariables: TranslationStore, ConfigOptions
+## SavedVariables: ConfigOptions, TranslationStore
 
 ## Category-enUS: Addons ZamestoTV
 ## Category-ruRU: Аддоны ZamestoTV

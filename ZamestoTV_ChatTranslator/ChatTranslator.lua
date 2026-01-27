@@ -1,12 +1,25 @@
 ---------------------------------------------------------
--- ZamestoTV Chat Translator (FULL ORIGINAL + FIXED)
+-- ZamestoTV Chat Translator PRO
+--  - Chat filters (no duplicates)
+--  - Translation + language caches
+--  - Settings menu (Retail + Classic fallback)
 ---------------------------------------------------------
 
 ---------------------------------------------------------
 -- SavedVariables (DO NOT SET DEFAULTS HERE)
 ---------------------------------------------------------
 TranslationStore = TranslationStore or {}
-ConfigOptions = ConfigOptions or {}
+ConfigOptions    = ConfigOptions or {}
+
+---------------------------------------------------------
+-- Local caches (session-only)
+---------------------------------------------------------
+local TranslationCache = {}
+local LangCache        = {}
+
+-- Options UI state (to avoid duplicate categories on /reload)
+local OPTIONS_BUILT = false
+local SETTINGS_CATEGORY_ID = nil
 
 ---------------------------------------------------------
 -- Flag icons
@@ -32,61 +45,85 @@ local function InitializeSavedVariables()
     if ConfigOptions.wordByWord == nil then
         ConfigOptions.wordByWord = true
     end
+
+    -- PRO options
+    if ConfigOptions.translateEnglish == nil then
+        ConfigOptions.translateEnglish = false
+    end
+    if ConfigOptions.showLanguageTag == nil then
+        ConfigOptions.showLanguageTag = true
+    end
+    if ConfigOptions.prefixStyle == nil then
+        -- "short" => [DEU], "word" => [GERMAN], "none" => no prefix (unless translated)
+        ConfigOptions.prefixStyle = "short"
+    end
+end
+
+local function ClearCaches()
+    wipe(TranslationCache)
+    wipe(LangCache)
 end
 
 ---------------------------------------------------------
--- Language detection (FULL ORIGINAL LOGIC)
+-- Language detection (ORIGINAL LOGIC + cached)
 ---------------------------------------------------------
+local WORDS = {
+    german = {
+        "aber","alle","als","auf","aus","bei","bin","bis","das","dass","dem","den",
+        "der","die","doch","ein","eine","für","geht","gibt","haben","hat","ich",
+        "ist","ja","kann","kein","mit","nicht","nur","oder","sich","sie","sind",
+        "und","von","was","wenn","wer","wie","wir","zu","zum","über"
+    },
+    french = {
+        "alors","avec","avoir","bonjour","bonsoir","dans","des","donc","elle",
+        "est","être","faire","ici","mais","merci","nous","pas","pour","quoi",
+        "sans","sur","tout","très","vous","ça"
+    },
+    spanish = {
+        "hola","adios","ayer","bien","como","con","del","donde","entonces",
+        "estoy","gracias","hacer","mañana","para","pero","porque","que",
+        "quien","siempre","sobre","todo","una","usted","muy"
+    },
+    portuguese = {
+        "agora","aqui","bem","bom","com","como","então","está","fazer",
+        "hoje","mas","não","obrigado","para","porque","quando","sem",
+        "também","você","muito"
+    },
+    italian = {
+        "allora","anche","bene","buono","ciao","come","con","fare","grazie",
+        "molto","non","oggi","perché","quando","qui","senza","sono",
+        "tutto","una","voi"
+    }
+}
+
 local function DetectLanguage(text)
     if not text or text == "" then
         return "english"
     end
 
-    local lower = text:lower()
+    -- Cache by raw text (chat messages repeat a lot)
+    local cached = LangCache[text]
+    if cached then
+        return cached
+    end
 
-    local WORDS = {
-        german = {
-            "aber","alle","als","auf","aus","bei","bin","bis","das","dass","dem","den",
-            "der","die","doch","ein","eine","für","geht","gibt","haben","hat","ich",
-            "ist","ja","kann","kein","mit","nicht","nur","oder","sich","sie","sind",
-            "und","von","was","wenn","wer","wie","wir","zu","zum","über"
-        },
-        french = {
-            "alors","avec","avoir","bonjour","bonsoir","dans","des","donc","elle",
-            "est","être","faire","ici","mais","merci","nous","pas","pour","quoi",
-            "sans","sur","tout","très","vous","ça"
-        },
-        spanish = {
-            "hola","adios","ayer","bien","como","con","del","donde","entonces",
-            "estoy","gracias","hacer","mañana","para","pero","porque","que",
-            "quien","siempre","sobre","todo","una","usted","muy"
-        },
-        portuguese = {
-            "agora","aqui","bem","bom","com","como","então","está","fazer",
-            "hoje","mas","não","obrigado","para","porque","quando","sem",
-            "também","você","muito"
-        },
-        italian = {
-            "allora","anche","bene","buono","ciao","come","con","fare","grazie",
-            "molto","non","oggi","perché","quando","qui","senza","sono",
-            "tutto","una","voi"
-        }
-    }
+    local lower = text:lower()
 
     for lang, list in pairs(WORDS) do
         for _, w in ipairs(list) do
             if lower == w then
+                LangCache[text] = lang
                 return lang
             end
         end
     end
 
-    if lower:find("[äöüß]") then return "german" end
-    if lower:find("ñ") then return "spanish" end
-    if lower:find("[ãõ]") then return "portuguese" end
-    if lower:find("[œæç]") then return "french" end
-    if lower:find("[àèìòù]") then return "italian" end
-    if lower:find("[А-Яа-яЁё]") then return "russian" end
+    if lower:find("[äöüß]") then LangCache[text] = "german"; return "german" end
+    if lower:find("ñ") then LangCache[text] = "spanish"; return "spanish" end
+    if lower:find("[ãõ]") then LangCache[text] = "portuguese"; return "portuguese" end
+    if lower:find("[œæç]") then LangCache[text] = "french"; return "french" end
+    if lower:find("[àèìòù]") then LangCache[text] = "italian"; return "italian" end
+    if lower:find("[А-Яа-яЁё]") then LangCache[text] = "russian"; return "russian" end
 
     for lang, list in pairs(WORDS) do
         local score = 0
@@ -96,10 +133,12 @@ local function DetectLanguage(text)
             end
         end
         if score >= 2 then
+            LangCache[text] = lang
             return lang
         end
     end
 
+    LangCache[text] = "english"
     return "english"
 end
 
@@ -114,6 +153,17 @@ local function GetLanguageIcon(language)
     if language == "portuguese" then return ICON_PORTUGUESE end
     if language == "italian"    then return ICON_ITALIAN end
     return ICON_ENGLISH
+end
+
+local function GetLanguageShort(language)
+    return
+        language == "english" and "ENG" or
+        language == "german" and "DEU" or
+        language == "french" and "FRA" or
+        language == "spanish" and "ESP" or
+        language == "portuguese" and "POR" or
+        language == "italian" and "ITA" or
+        language == "russian" and "РУС" or "???"
 end
 
 ---------------------------------------------------------
@@ -135,11 +185,11 @@ local function InitializeTranslations()
         end
     end
 
-    DEFAULT_CHAT_FRAME:AddMessage("|cFF00FF00[Переводчик чата] Загружено " .. count .. " переводов|r")
+    DEFAULT_CHAT_FRAME:AddMessage("|cFF00FF00[Переводчик чата]|r Загружено " .. count .. " переводов")
 end
 
 ---------------------------------------------------------
--- Helpers (ORIGINAL)
+-- Helpers
 ---------------------------------------------------------
 local function ExtractWords(input)
     local t = {}
@@ -153,19 +203,22 @@ local function NormalizeText(text)
     return text:gsub("^[%p%s]+", ""):gsub("[%p%s]+$", ""):lower()
 end
 
-local function IsPublicChannel(...)
-    local channelInfo = select(4, ...)
-    return channelInfo and channelInfo:match("^%d+%.%s") ~= nil
-end
-
 ---------------------------------------------------------
--- Translation search (ORIGINAL)
+-- Translation search (CACHED)
 ---------------------------------------------------------
 local function FindTranslation(input)
     if not input or input == "" or tonumber(input) then return nil end
 
     local normalized = NormalizeText(input)
+
+    local cached = TranslationCache[normalized]
+    if cached ~= nil then
+        -- store nil as false sentinel
+        return cached == false and nil or cached
+    end
+
     if TranslationStore[normalized] then
+        TranslationCache[normalized] = TranslationStore[normalized]
         return TranslationStore[normalized]
     end
 
@@ -181,80 +234,111 @@ local function FindTranslation(input)
             end
         end
         if found then
-            return table.concat(out, " ")
+            local res = table.concat(out, " ")
+            TranslationCache[normalized] = res
+            return res
         end
     end
 
+    TranslationCache[normalized] = false
     return nil
 end
 
 ---------------------------------------------------------
--- Main handler (ORIGINAL LOGIC - FIXED)
+-- Prefix builder
 ---------------------------------------------------------
-local function HandleMessage(_, event, message, sender, ...)
-    if not message or message == "" then return end
-
-    local shouldTranslate
-
-    if event == "CHAT_MSG_CHANNEL" then
-        if not ConfigOptions.channelTranslation then
-            return
-        end
-        shouldTranslate = true
-    else
-        if not ConfigOptions.globalTranslation then
-            return
-        end
-        shouldTranslate = true
+local function BuildPrefix(lang, hasTranslation)
+    if hasTranslation then
+        return ICON_RUSSIAN .. " |cFF00FF00[Перевод]|r "
     end
 
-    if not shouldTranslate then return end
+    if not ConfigOptions.showLanguageTag then
+        return ""
+    end
 
-    local player = sender and Ambiguate(sender, "short") or "?"
-    local translation = FindTranslation(message)
-    local lang = DetectLanguage(message)
     local icon = GetLanguageIcon(lang)
-
-    local short =
-        lang == "english" and "ENG" or
-        lang == "german" and "DEU" or
-        lang == "french" and "FRA" or
-        lang == "spanish" and "ESP" or
-        lang == "portuguese" and "POR" or
-        lang == "italian" and "ITA" or
-        lang == "russian" and "РУС" or "???"
-
-    local label = translation
-        and ICON_RUSSIAN .. " |cFF00FF00[Перевод]|r"
-        or icon .. " |cFFFFD000[" .. short .. "]|r"
-
-    DEFAULT_CHAT_FRAME:AddMessage(
-        string.format("%s |cFFFFFF00%s|r: %s", label, player, translation or message)
-    )
+    if ConfigOptions.prefixStyle == "none" then
+        return ""
+    elseif ConfigOptions.prefixStyle == "word" then
+        return icon .. " |cFFFFD000[" .. lang:upper() .. "]|r "
+    else
+        return icon .. " |cFFFFD000[" .. GetLanguageShort(lang) .. "]|r "
+    end
 end
 
+---------------------------------------------------------
+-- Chat filter (NO DUPLICATES)
+---------------------------------------------------------
+local function ShouldTranslateEvent(event)
+    if event == "CHAT_MSG_CHANNEL" then
+        return ConfigOptions.channelTranslation
+    end
+    return ConfigOptions.globalTranslation
+end
+
+local function ChatFilter(self, event, message, sender, ...)
+    if not message or message == "" then
+        return false
+    end
+
+    if not ShouldTranslateEvent(event) then
+        return false
+    end
+
+    local lang = DetectLanguage(message)
+    if lang == "english" and not ConfigOptions.translateEnglish then
+        -- still may want to show [ENG] tag; honor showLanguageTag
+        if not ConfigOptions.showLanguageTag then
+            return false
+        end
+        -- only prefix, no other changes
+        local prefix = BuildPrefix(lang, false)
+        if prefix == "" then return false end
+        return false, prefix .. message, sender, ...
+    end
+
+    local translation = FindTranslation(message)
+    local prefix = BuildPrefix(lang, translation ~= nil)
+
+    -- If nothing to add/change, keep original
+    if not translation and prefix == "" then
+        return false
+    end
+
+    return false, prefix .. (translation or message), sender, ...
+end
 
 ---------------------------------------------------------
--- Message processor (GLOBAL, REQUIRED FOR /gchat)
+-- Register / unregister chat filters
 ---------------------------------------------------------
-messageProcessor = CreateFrame("Frame", "ZamestoTV_MessageProcessor")
+local FILTER_EVENTS = {
+    "CHAT_MSG_CHANNEL",
+    "CHAT_MSG_SAY",
+    "CHAT_MSG_YELL",
+    "CHAT_MSG_PARTY",
+    "CHAT_MSG_PARTY_LEADER",
+    "CHAT_MSG_RAID",
+    "CHAT_MSG_RAID_LEADER",
+    "CHAT_MSG_WHISPER",
+    "CHAT_MSG_INSTANCE_CHAT",
+    "CHAT_MSG_INSTANCE_CHAT_LEADER",
+    "CHAT_MSG_RAID_WARNING",
+}
 
-messageProcessor:RegisterEvent("CHAT_MSG_CHANNEL")
-messageProcessor:RegisterEvent("CHAT_MSG_SAY")
-messageProcessor:RegisterEvent("CHAT_MSG_YELL")
-messageProcessor:RegisterEvent("CHAT_MSG_PARTY")
-messageProcessor:RegisterEvent("CHAT_MSG_PARTY_LEADER")
-messageProcessor:RegisterEvent("CHAT_MSG_RAID")
-messageProcessor:RegisterEvent("CHAT_MSG_RAID_LEADER")
-messageProcessor:RegisterEvent("CHAT_MSG_WHISPER")
-messageProcessor:RegisterEvent("CHAT_MSG_INSTANCE_CHAT")
-messageProcessor:RegisterEvent("CHAT_MSG_INSTANCE_CHAT_LEADER")
-messageProcessor:RegisterEvent("CHAT_MSG_RAID_WARNING")
+local function RegisterFilters()
+    for _, ev in ipairs(FILTER_EVENTS) do
+        ChatFrame_AddMessageEventFilter(ev, ChatFilter)
+    end
+end
 
-messageProcessor:SetScript("OnEvent", HandleMessage)
+local function UnregisterFilters()
+    for _, ev in ipairs(FILTER_EVENTS) do
+        ChatFrame_RemoveMessageEventFilter(ev, ChatFilter)
+    end
+end
 
 ---------------------------------------------------------
--- Slash commands (FULL, WORKING, SAVED)
+-- Slash commands
 ---------------------------------------------------------
 SLASH_ZCHAT_GLOBAL1 = "/achat"
 SlashCmdList["ZCHAT_GLOBAL"] = function()
@@ -268,17 +352,146 @@ end
 SLASH_ZCHAT_PUBLIC1 = "/gchat"
 SlashCmdList["ZCHAT_PUBLIC"] = function()
     ConfigOptions.channelTranslation = not ConfigOptions.channelTranslation
-
-    if ConfigOptions.channelTranslation then
-        messageProcessor:RegisterEvent("CHAT_MSG_CHANNEL")
-    else
-        messageProcessor:UnregisterEvent("CHAT_MSG_CHANNEL")
-    end
-
     DEFAULT_CHAT_FRAME:AddMessage(
         "|cFF00FF00[Переводчик чата]|r Публичные каналы " ..
         (ConfigOptions.channelTranslation and "включены" or "выключены")
     )
+end
+
+SLASH_ZCHAT_OPTIONS1 = "/zchat"
+SlashCmdList["ZCHAT_OPTIONS"] = function()
+    if Settings and Settings.OpenToCategory then
+        if SETTINGS_CATEGORY_ID then
+            Settings.OpenToCategory(SETTINGS_CATEGORY_ID)
+        else
+            -- Fallback: some clients accept the category name
+            Settings.OpenToCategory("ZamestoTV Chat Translator")
+        end
+    elseif InterfaceOptionsFrame_OpenToCategory then
+        InterfaceOptionsFrame_OpenToCategory("ZamestoTV Chat Translator")
+        InterfaceOptionsFrame_OpenToCategory("ZamestoTV Chat Translator")
+    end
+end
+
+SLASH_ZCHAT_CLEARCACHE1 = "/zchatcache"
+SlashCmdList["ZCHAT_CLEARCACHE"] = function()
+    ClearCaches()
+    DEFAULT_CHAT_FRAME:AddMessage("|cFF00FF00[Переводчик чата]|r Кеш очищен")
+end
+
+---------------------------------------------------------
+-- Settings UI
+---------------------------------------------------------
+local function CreateCheckbox(parent, label, tooltip, getter, setter, y)
+    local cb = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+    cb:SetPoint("TOPLEFT", 16, y)
+
+    cb.Text:SetText(label)
+    if tooltip then
+        cb.tooltipText = label
+        cb.tooltipRequirement = tooltip
+    end
+
+    cb:SetScript("OnShow", function(self) self:SetChecked(getter()) end)
+    cb:SetScript("OnClick", function(self) setter(self:GetChecked()) end)
+    cb:SetChecked(getter())
+    return cb
+end
+
+local function CreateButton(parent, text, y, onClick)
+    local btn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    btn:SetSize(160, 22)
+    btn:SetPoint("TOPLEFT", 16, y)
+    btn:SetText(text)
+    btn:SetScript("OnClick", onClick)
+    return btn
+end
+
+local function BuildOptionsPanel()
+    if OPTIONS_BUILT then return end
+    OPTIONS_BUILT = true
+    local panel = CreateFrame("Frame")
+    panel.name = "ZamestoTV Chat Translator"
+
+    local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", 16, -16)
+    title:SetText("ZamestoTV Chat Translator")
+
+    local sub = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    sub:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
+    sub:SetText("Команды: /achat, /gchat, /zchat, /zchatcache")
+
+    local y = -60
+
+    CreateCheckbox(panel,
+        "Перевод личных чатов",
+        "SAY / PARTY / RAID / WHISPER / INSTANCE / etc.",
+        function() return ConfigOptions.globalTranslation end,
+        function(v) ConfigOptions.globalTranslation = v end,
+        y
+    )
+    y = y - 28
+
+    CreateCheckbox(panel,
+        "Перевод публичных каналов",
+        "Торговля, общий, LFG и т.п. (CHAT_MSG_CHANNEL)",
+        function() return ConfigOptions.channelTranslation end,
+        function(v) ConfigOptions.channelTranslation = v end,
+        y
+    )
+    y = y - 28
+
+    CreateCheckbox(panel,
+        "Перевод по словам (word-by-word)",
+        "Если фраза не найдена — пробуем переводить каждое слово отдельно.",
+        function() return ConfigOptions.wordByWord end,
+        function(v) ConfigOptions.wordByWord = v; ClearCaches() end,
+        y
+    )
+    y = y - 28
+
+    CreateCheckbox(panel,
+        "Показывать тег языка, если перевода нет",
+        "Например: [DEU], [FRA]. Если выключить — сообщения без перевода будут без префикса.",
+        function() return ConfigOptions.showLanguageTag end,
+        function(v) ConfigOptions.showLanguageTag = v end,
+        y
+    )
+    y = y - 28
+
+    CreateCheckbox(panel,
+        "Пытаться переводить английский тоже",
+        "По умолчанию английский не трогаем (только тег, если включен).",
+        function() return ConfigOptions.translateEnglish end,
+        function(v) ConfigOptions.translateEnglish = v; ClearCaches() end,
+        y
+    )
+    y = y - 36
+
+    CreateButton(panel, "Очистить кеш", y, function()
+        ClearCaches()
+        DEFAULT_CHAT_FRAME:AddMessage("|cFF00FF00[Переводчик чата]|r Кеш очищен")
+    end)
+
+    y = y - 30
+    CreateButton(panel, "Перезагрузить переводы", y, function()
+        InitializeTranslations()
+        ClearCaches()
+    end)
+
+    if Settings and Settings.RegisterCanvasLayoutCategory then
+        local category = Settings.RegisterCanvasLayoutCategory(panel, panel.name)
+        Settings.RegisterAddOnCategory(category)
+        if category then
+            if category.GetID then
+                SETTINGS_CATEGORY_ID = category:GetID()
+            elseif category.ID then
+                SETTINGS_CATEGORY_ID = category.ID
+            end
+        end
+    else
+        InterfaceOptions_AddCategory(panel)
+    end
 end
 
 ---------------------------------------------------------
@@ -289,4 +502,8 @@ init:RegisterEvent("PLAYER_LOGIN")
 init:SetScript("OnEvent", function()
     InitializeSavedVariables()
     InitializeTranslations()
+    ClearCaches()
+    UnregisterFilters()
+    RegisterFilters()
+    BuildOptionsPanel()
 end)
